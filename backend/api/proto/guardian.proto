@@ -1,0 +1,49 @@
+syntax = "proto3";
+package guardian;
+option go_package = "guardian/pkg/grpc/api";
+
+import "google/protobuf/timestamp.proto";
+import "google/api/annotations.proto";
+
+service AgentService {
+    rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+}
+
+service DataService {
+    rpc UploadMessages(UploadMessagesRequest) returns (UploadMessagesResponse) {
+        option (google.api.http) = {
+            post: "/v1/messages/{agent_id}"
+            body: "*"
+        };
+    }
+}
+
+message ChatMessage {
+    string content = 1;
+    google.protobuf.Timestamp timestamp = 2;
+}
+
+message UploadMessagesRequest {
+    int32 agent_id = 1;
+    repeated ChatMessage messages = 2;
+}
+
+message UploadMessagesResponse {
+    bool success = 1;
+}
+
+message HeartbeatRequest {
+    int32 agent_id = 1;
+    string hostname = 2;
+}
+
+enum TaskType {
+    NONE = 0;
+    DUMP_WECHAT_DATA = 1;
+}
+
+message HeartbeatResponse {
+    // 未来可以加入任务指令
+    string task_id = 1;
+    TaskType task_type = 2;
+}
