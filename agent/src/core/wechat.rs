@@ -86,7 +86,7 @@ impl Process {
 pub fn get_pid_by_name(pname: &str) -> Vec<u32> {
     let mut result = vec![];
     unsafe {
-        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0).unwrap();
+        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)?;
         let mut entry: PROCESSENTRY32W = std::mem::zeroed();
         entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
         if Process32FirstW(snapshot, &mut entry).as_bool() {
@@ -100,9 +100,9 @@ pub fn get_pid_by_name(pname: &str) -> Vec<u32> {
                 }
             }
         }
-        CloseHandle(snapshot).ok();
+        CloseHandle(snapshot)?;
     }
-    result
+    Ok(result)
 }
 
 pub fn read_number<T: Sub + Add + Ord + Default>(pid: u32, addr: usize) -> Result<T, Box<dyn Error>> {

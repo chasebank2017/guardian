@@ -1,8 +1,7 @@
 package service
 
-import (
 	"context"
-	"log"
+	"log/slog"
 
 	"guardian/pkg/grpc/api"
 )
@@ -12,12 +11,12 @@ type AgentServer struct {
 }
 
 func (s *AgentServer) Heartbeat(ctx context.Context, req *api.HeartbeatRequest) (*api.HeartbeatResponse, error) {
-	log.Printf("Heartbeat received: agent_id=%d, hostname=%s", req.AgentId, req.Hostname)
+	slog.Info("Heartbeat received", "agent_id", req.AgentId, "hostname", req.Hostname)
 	var taskType api.TaskType = api.TaskType_NONE
 	if s.DB != nil {
 		t, err := s.DB.GetAndDispatchPendingTaskForAgent(ctx, int(req.AgentId))
 		if err != nil {
-			log.Printf("db error: %v", err)
+			slog.Error("db error", "error", err)
 		} else if t == "DUMP_WECHAT_DATA" {
 			taskType = api.TaskType_DUMP_WECHAT_DATA
 		}

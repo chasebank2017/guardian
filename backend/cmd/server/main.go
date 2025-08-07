@@ -6,7 +6,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"os"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -17,19 +16,25 @@ import (
 	"guardian/backend/internal/service"
 	"guardian/backend/internal/database"
 	"guardian/backend/internal/handler"
+	"guardian/backend/internal/config"
 )
 
 
 
 func main() {
 	ctx := context.Background()
-	pool, err := database.NewConnection(ctx)
+	cfg, err := config.Load()
+	if err != nil {
+		log.Panicf("failed to load config: %v", err)
+	}
+
+	pool, err := database.NewConnectionWithDSN(ctx, cfg.Database.DSN)
 	if err != nil {
 		log.Panicf("failed to connect to database: %v", err)
 	}
 
 	// gRPC 服务器
-	lis, err := net.Listen("tcp", ":50051")
+	lis, err := net.Listen("tcp", cfg.Server.GrpcPort)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
@@ -39,7 +44,7 @@ func main() {
 	dataSrv := &service.DataServer{DB: pool}
 	api.RegisterDataServiceServer(grpcServer, dataSrv)
 	go func() {
-		log.Println("gRPC server listening on :50051")
+		log.Printf("gRPC server listening on %s", cfg.Server.GrpcPort)
 		if err := grpcServer.Serve(lis); err != nil {
 			log.Fatalf("failed to serve: %v", err)
 		}
@@ -52,11 +57,13 @@ func main() {
 
 
 	// 登录API
-	r.Post("/login", handler.Login)
+	// 实例化 AuthHandler
+	authHandler := &handler.AuthHandler{JWTSecret: cfg.Auth.JWTSecret}
+	r.Post("/login", authHandler.Login)
 
 	// 受保护API
 	r.Group(func(protected chi.Router) {
-		protected.Use(handler.JWTAuth)
+		protected.Use(handler.JWTAuth(cfg.Auth.JWTSecret))
 		// 任务下发API
 		taskHandler := &handler.TaskHandler{DB: pool}
 		protected.Post("/v1/agents/{agentID}/tasks", taskHandler.Create)
@@ -65,17 +72,20 @@ func main() {
 		opts := []grpc.DialOption{grpc.WithInsecure()}
 		err = api.RegisterDataServiceHandlerFromEndpoint(ctx, gwMux, "localhost:50051", opts)
 		if err != nil {
-			log.Fatalf("failed to register DataService handler: %v", err)
+			slog.Error("failed to register DataService handler", "error", err)
+			panic(err)
 		}
 		err = api.RegisterAgentServiceHandlerFromEndpoint(ctx, gwMux, "localhost:50051", opts)
 		if err != nil {
-			log.Fatalf("failed to register AgentService handler: %v", err)
+			slog.Error("failed to register AgentService handler", "error", err)
+			panic(err)
 		}
 		protected.Mount("/", gwMux)
 	})
 
-	log.Println("HTTP server listening on :8080")
-	if err := http.ListenAndServe(":8080", r); err != nil {
-		log.Fatalf("failed to serve HTTP: %v", err)
-	}
+   slog.Info("HTTP server listening", "port", cfg.Server.Port)
+   if err := http.ListenAndServe(cfg.Server.Port, r); err != nil {
+	   slog.Error("failed to serve HTTP", "error", err)
+	   panic(err)
+   }
 }

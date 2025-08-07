@@ -1,8 +1,7 @@
 package service
 
-import (
 	"context"
-	"log"
+	"log/slog"
 	"time"
 
 	"guardian/pkg/grpc/api"
@@ -17,14 +16,14 @@ type DataServer struct {
 
 func (s *DataServer) UploadMessages(ctx context.Context, req *api.UploadMessagesRequest) (*api.UploadMessagesResponse, error) {
 	if s.DB == nil {
-		log.Printf("DB pool is nil")
+		slog.Error("DB pool is nil")
 		return &api.UploadMessagesResponse{Success: false}, nil
 	}
 	err := s.DB.SaveMessages(ctx, int(req.AgentId), req.Messages)
 	if err != nil {
-		log.Printf("Failed to save messages: %v", err)
+		slog.Error("Failed to save messages", "error", err, "agent_id", req.AgentId)
 		return &api.UploadMessagesResponse{Success: false}, err
 	}
-	log.Printf("Saved %d messages for agent %d", len(req.Messages), req.AgentId)
+	slog.Info("Saved messages", "count", len(req.Messages), "agent_id", req.AgentId)
 	return &api.UploadMessagesResponse{Success: true}, nil
 }

@@ -3,13 +3,14 @@ package handler
 import (
 	"net/http"
 	"strconv"
+	"errors"
+	"log/slog"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"guardian/backend/internal/database"
 )
 
-type TaskHandler struct {
-	DB *pgxpool.Pool
+	DB database.DBOperations
 }
 
 func (h *TaskHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -22,7 +23,12 @@ func (h *TaskHandler) Create(w http.ResponseWriter, r *http.Request) {
 	taskType := "DUMP_WECHAT_DATA"
 	err = h.DB.CreateTaskForAgent(r.Context(), agentID, taskType)
 	if err != nil {
-		http.Error(w, "failed to create task", http.StatusInternalServerError)
+		if errors.Is(err, database.ErrAgentNotFound) {
+			http.Error(w, "Agent not found", http.StatusNotFound)
+		} else {
+			slog.Error("Failed to create task", "error", err, "agent_id", agentID)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
 		return
 	}
 	w.WriteHeader(http.StatusCreated)
