@@ -4,23 +4,44 @@ on:
   push:
     branches: [ "main" ]
     paths:
+      - 'agent/**'
       - 'backend/**'
   pull_request:
     branches: [ "main" ]
     paths:
+      - 'agent/**'
       - 'backend/**'
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
-
+  build-agent:
+    name: Build and Test Agent (Rust)
     runs-on: ubuntu-latest
-
     steps:
-    - uses: actions/checkout@v3
-    - name: Build
-      run: cd backend && cargo build --verbose
-    - name: Run tests
-      run: cd backend && cargo test --verbose
+      - uses: actions/checkout@v3
+      - name: Build agent
+        run: cd agent && cargo build --verbose
+      - name: Test agent
+        run: cd agent && cargo test --verbose
+
+  build-backend:
+    name: Build and Test Backend (Rust)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Build backend (skip if no Cargo.toml)
+        run: |
+          if [ -f backend/Cargo.toml ]; then
+            cd backend && cargo build --verbose
+          else
+            echo "No Rust project in backend, skipping."
+          fi
+      - name: Test backend (skip if no Cargo.toml)
+        run: |
+          if [ -f backend/Cargo.toml ]; then
+            cd backend && cargo test --verbose
+          else
+            echo "No Rust project in backend, skipping."
+          fi
