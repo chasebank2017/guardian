@@ -29,24 +29,13 @@ services:
       - "8080:8080"      # HTTP
       - "50051:50051"    # gRPC
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     environment:
       - DATABASE_URL=postgres://user:password@postgres:5432/guardian?sslmode=disable
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
     restart: unless-stopped
-
-  migrate:
-    image: migrate/migrate:4
-    container_name: guardian_migrate
-    volumes:
-      - ./backend/db/migrations:/migrations
-    command: [
-      "-path", "/migrations",
-      "-database", "postgres://user:password@postgres:5432/guardian?sslmode=disable",
-      "up"
-    ]
-    depends_on:
-      - postgres
-    restart: on-failure
 
 volumes:
   postgres_data:
