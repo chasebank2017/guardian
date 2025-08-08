@@ -1,8 +1,13 @@
+package database
+
 import (
 	"context"
 	"fmt"
 	"time"
+	"os"
 	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v5"
+	"guardian/pkg/grpc/api"
 )
 
 // TimeoutStaleTasks 将状态为 'sent' 且在指定时间内未更新的任务标记为 'timeout'
@@ -19,14 +24,7 @@ func (p *pgxpool.Pool) TimeoutStaleTasks(ctx context.Context, timeoutDuration ti
 	}
 	return tag.RowsAffected(), nil
 }
-import (
-	"context"
-	"errors"
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/jackc/pgx/v5"
-	"guardian/pkg/grpc/api"
-	"time"
-)
+// ...existing code...
 
 // ErrAgentNotFound 用于 agent_id 不存在时返回
 var ErrAgentNotFound = errors.New("agent not found")
@@ -89,14 +87,7 @@ func (p *pgxpool.Pool) SaveMessages(ctx context.Context, agentID int, messages [
 	)
 	return err
 }
-package database
-
-import (
-	"context"
-	"os"
-	"github.com/jackc/pgx/v5/pgxpool"
-	"fmt"
-)
+// ...existing code...
 
 // NewConnection 读取环境变量 DATABASE_DSN 并返回 pgxpool.Pool
 func NewConnection(ctx context.Context) (*pgxpool.Pool, error) {

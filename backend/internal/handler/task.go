@@ -10,6 +10,7 @@ import (
 	"guardian/backend/internal/database"
 )
 
+type TaskHandler struct {
 	DB database.DBOperations
 }
 

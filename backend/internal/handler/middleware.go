@@ -1,7 +1,12 @@
+package handler
+
 import (
 	"context"
 	"strconv"
+	"net/http"
+	"strings"
 	"github.com/go-chi/chi/v5"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 // 定义一个唯一的key类型，用于在context中存取值，避免冲突
@@ -27,13 +32,7 @@ func AgentCtx(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
-package handler
-
-import (
-	"net/http"
-	"strings"
-	"github.com/golang-jwt/jwt/v5"
-)
+// ...existing code...
 
 func JWTAuth(jwtSecret string) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {

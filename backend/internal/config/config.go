@@ -2,16 +2,18 @@ package config
 
 import "github.com/spf13/viper"
 
-   Server   ServerConfig
-   Database DatabaseConfig
-   Auth     AuthConfig
+type Config struct {
+	Server   ServerConfig   `mapstructure:"server"`
+	Database DatabaseConfig `mapstructure:"database"`
+	Auth     AuthConfig     `mapstructure:"auth"`
 }
+
 type AuthConfig struct {
-   JWTSecret string `mapstructure:"jwt_secret"`
+	JWTSecret string `mapstructure:"jwt_secret"`
 }
 
 type ServerConfig struct {
-	Port     string
+	Port     string `mapstructure:"port"`
 	GrpcPort string `mapstructure:"grpc_port"`
 }
 
