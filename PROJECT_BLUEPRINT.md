@@ -68,6 +68,23 @@ CREATE TABLE audit_logs (
     ip_address VARCHAR(100),
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+ -- 案件表
+ CREATE TABLE cases (
+     id SERIAL PRIMARY KEY,
+     name VARCHAR(255) NOT NULL,
+     description TEXT,
+     status VARCHAR(50) NOT NULL DEFAULT 'open', -- 'open', 'closed', 'archived'
+     created_by INTEGER REFERENCES audit_users(id),
+     created_at TIMESTAMPTZ DEFAULT NOW(),
+     updated_at TIMESTAMPTZ DEFAULT NOW()
+ );
+ -- 案件与Agent的关联表 (多对多关系)
+ CREATE TABLE case_agents (
+     case_id INTEGER REFERENCES cases(id) ON DELETE CASCADE,
+     agent_id INTEGER REFERENCES agents(id) ON DELETE CASCADE,
+     PRIMARY KEY (case_id, agent_id)
+ );
 ```
 
 ---
