@@ -1,3 +1,19 @@
+use sysinfo::{Disks, System};
+use std::path::Path;
+
+fn has_sufficient_disk_space(path: &Path, required_bytes: u64) -> bool {
+    let disks = Disks::new_with_refreshed_list();
+    let mut available_space = 0;
+    for disk in &disks {
+        if path.starts_with(disk.mount_point()) {
+            available_space = disk.available_space();
+            break;
+        }
+    }
+    // 这里假设 slog::info! 可用，否则可用 println! 或 log 宏
+    slog::info!("Checking disk space"; "available" => available_space, "required" => required_bytes);
+    available_space > required_bytes
+}
 #[derive(Debug)]
 pub struct ChatMessage {
     pub content: String,
@@ -154,7 +170,9 @@ pub fn read_bytes(pid: u32, addr: usize, size: usize) -> Result<Vec<u8>, Box<dyn
     }
 }
 
-pub fn get_wechat_data() -> Result<Vec<ChatMessage>, Box<dyn Error>> {
+use super::signature_config::{SignatureConfig, MagicOffset};
+
+pub fn get_wechat_data(config: &SignatureConfig) -> Result<Vec<ChatMessage>, Box<dyn Error>> {
     // 1. 查找正在运行的 WeChat.exe 进程
     let pids = get_pid_by_name("WeChat.exe");
     let pid = *pids.first().ok_or("WeChat.exe process not found")?;
@@ -176,8 +194,18 @@ pub fn get_wechat_data() -> Result<Vec<ChatMessage>, Box<dyn Error>> {
     // 获取数据目录（示例：假设 WeChat 数据目录为 C:\Users\<User>\Documents\WeChat Files）
     // 实际应通过内存扫描或注册表等方式获取，这里仅演示填充流程
     let user_profile = std::env::var("USERPROFILE").unwrap_or_default();
-    let default_data_dir = format!("{}\\Documents\\WeChat Files", user_profile);
-    info.data_dir = default_data_dir;
+    // 支持通过配置动态指定数据目录
+    let data_dir = config.magic_offsets.iter().find(|m| m.name == "DataDir").map(|m| m.value.clone())
+        .unwrap_or_else(|| format!("{}\\Documents\\WeChat Files", user_profile));
+    info.data_dir = data_dir;
+
+    // 检查临时目录磁盘空间
+    const REQUIRED_SPACE: u64 = 500 * 1024 * 1024; // 500MB
+    let temp_dir = std::env::temp_dir();
+    if !has_sufficient_disk_space(&temp_dir, REQUIRED_SPACE) {
+        slog::error!("Insufficient disk space"; "path" => temp_dir.display().to_string());
+        return Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, "Insufficient disk space")));
+    }
 
     use std::fs;
     let mut messages = Vec::new();
@@ -192,15 +220,39 @@ pub fn get_wechat_data() -> Result<Vec<ChatMessage>, Box<dyn Error>> {
         let mut info = info.clone();
         info.account_name = account_name.to_string();
 
-        // key
-        let key_path = format!("{}\{}\key", info.data_dir, info.account_name);
-        let key = fs::read(&key_path)
-            .ok()
-            .and_then(|bytes| if !bytes.is_empty() { Some(hex::encode(bytes)) } else { None });
+        // key pattern/offset 通过配置动态获取
+        let key_pattern = config.magic_offsets.iter().find(|m| m.name == "KeyPattern").map(|m| m.value.clone());
+        let key_path = if let Some(pattern) = key_pattern {
+            pattern.replace("{data_dir}", &info.data_dir).replace("{account}", &info.account_name)
+        } else {
+            format!("{}\{}\key", info.data_dir, info.account_name)
+        };
+        // 支持 key 解密方式配置（如 hex/base64/raw）
+        let key_decode = config.magic_offsets.iter().find(|m| m.name == "KeyDecode").map(|m| m.value.as_str()).unwrap_or("hex");
+        let key = fs::read(&key_path).ok().and_then(|bytes| {
+            if !bytes.is_empty() {
+                match key_decode {
+                    "hex" => Some(hex::encode(bytes)),
+                    "base64" => Some(base64::encode(bytes)),
+                    "raw" => String::from_utf8(bytes).ok(),
+                    _ => None,
+                }
+            } else {
+                None
+            }
+        });
         info.key = key;
 
         // 数据库解密与消息提取
-        let msg_db_path = format!("{}\{}\Msg\Msg.db", info.data_dir, info.account_name);
+        // db 路径也支持配置
+        let db_pattern = config.magic_offsets.iter().find(|m| m.name == "MsgDbPattern").map(|m| m.value.clone());
+        let msg_db_path = if let Some(pattern) = db_pattern {
+            pattern.replace("{data_dir}", &info.data_dir).replace("{account}", &info.account_name)
+        } else {
+            format!("{}\{}\Msg\Msg.db", info.data_dir, info.account_name)
+        };
+        // 支持消息表名配置
+        let msg_table = config.magic_offsets.iter().find(|m| m.name == "MsgTable").map(|m| m.value.as_str()).unwrap_or("MSG");
         if let (Some(key_hex), true) = (&info.key, std::path::Path::new(&msg_db_path).exists()) {
             #[cfg(feature = "sqlcipher")]
             {
@@ -209,7 +261,7 @@ pub fn get_wechat_data() -> Result<Vec<ChatMessage>, Box<dyn Error>> {
                 use std::io::Write;
                 use std::env::temp_dir;
                 use std::path::PathBuf;
-                use std::fs::remove_file;
+                use shred::Shred;
 
                 // 复制数据库到临时文件
                 let mut tmp_path = temp_dir();
@@ -219,7 +271,8 @@ pub fn get_wechat_data() -> Result<Vec<ChatMessage>, Box<dyn Error>> {
                 let mut conn = Connection::open(&tmp_path)?;
                 conn.pragma_update(None, "key", &key_hex)?;
 
-                let mut stmt = conn.prepare("SELECT StrContent, CreateTime FROM MSG")?;
+                let sql = format!("SELECT StrContent, CreateTime FROM {}", msg_table);
+                let mut stmt = conn.prepare(&sql)?;
                 let rows = stmt.query_map([], |row| {
                     let content: String = row.get(0)?;
                     let timestamp: i64 = row.get(1)?;
@@ -228,8 +281,11 @@ pub fn get_wechat_data() -> Result<Vec<ChatMessage>, Box<dyn Error>> {
                 for msg in rows.flatten() {
                     messages.push(msg);
                 }
-                // 删除临时文件
-                let _ = remove_file(&tmp_path);
+                // 安全删除临时文件
+                match tmp_path.shred() {
+                    Ok(_) => slog::info!("Temporary file securely shredded.", "path" => tmp_path.display().to_string()),
+                    Err(e) => slog::error!("Failed to shred temporary file.", "path" => tmp_path.display().to_string(), "error" => e.to_string()),
+                }
             }
         }
     }

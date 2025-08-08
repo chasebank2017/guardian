@@ -16,7 +16,7 @@ type ServerConfig struct {
 }
 
 type DatabaseConfig struct {
-	DSN string
+	DSN string `mapstructure:"dsn"`
 }
 
 func Load() (*Config, error) {
@@ -25,6 +25,13 @@ func Load() (*Config, error) {
 	viper.AddConfigPath("./backend") // 在 backend 目录寻找 config.yaml
 	viper.AddConfigPath("./")        // 兼容直接在根目录运行
 	viper.AutomaticEnv()
+
+	// Bind environment variables
+	vip_err := viper.BindEnv("database.dsn", "DATABASE_URL")
+	if vip_err != nil {
+		return nil, vip_err
+	}
+
 	if err := viper.ReadInConfig(); err != nil {
 		return nil, err
 	}

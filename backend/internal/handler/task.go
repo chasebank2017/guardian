@@ -14,14 +14,14 @@ import (
 }
 
 func (h *TaskHandler) Create(w http.ResponseWriter, r *http.Request) {
-	agentIDStr := chi.URLParam(r, "agentID")
-	agentID, err := strconv.Atoi(agentIDStr)
-	if err != nil {
-		http.Error(w, "invalid agentID", http.StatusBadRequest)
+	agentID, ok := r.Context().Value(AgentIDKey).(int)
+	if !ok {
+		slog.Error("Could not retrieve agentID from context")
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	taskType := "DUMP_WECHAT_DATA"
-	err = h.DB.CreateTaskForAgent(r.Context(), agentID, taskType)
+	err := h.DB.CreateTaskForAgent(r.Context(), agentID, taskType)
 	if err != nil {
 		if errors.Is(err, database.ErrAgentNotFound) {
 			http.Error(w, "Agent not found", http.StatusNotFound)

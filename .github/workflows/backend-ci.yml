@@ -1,0 +1,46 @@
+name: Backend CI
+# 定义触发工作流的事件
+on:
+  push:
+    branches: [ main, master ] # 当推送到主分支时
+    paths:
+      - 'backend/**' # 仅当 backend 目录有变化时
+  pull_request:
+    branches: [ main, master ] # 当向主分支发起 PR 时
+    paths:
+      - 'backend/**'
+jobs:
+  lint-and-test:
+    name: Lint and Test
+    runs-on: ubuntu-latest
+    steps:
+      # 第一步：检出代码
+      - name: Checkout code
+        uses: actions/checkout@v4
+      # 第二步：设置 Go 环境
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      # 第三步：运行代码风格检查 (linter)
+      - name: Run linter
+        uses: golangci/golangci-lint-action@v6
+        with:
+          working-directory: backend
+      # 第四步：运行单元测试
+      - name: Run tests
+        run: cd backend && go test -v ./...
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: lint-and-test # 依赖于上一个 job 的成功
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      # 仅构建，不运行，以验证代码可以被成功编译
+      - name: Build application
+        run: cd backend && go build -v ./cmd/server

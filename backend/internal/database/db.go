@@ -1,5 +1,26 @@
 import (
 	"context"
+	"fmt"
+	"time"
+	"github.com/jackc/pgx/v4/pgxpool"
+)
+
+// TimeoutStaleTasks 将状态为 'sent' 且在指定时间内未更新的任务标记为 'timeout'
+func (p *pgxpool.Pool) TimeoutStaleTasks(ctx context.Context, timeoutDuration time.Duration) (int64, error) {
+	// SQL 语句的逻辑是：
+	// UPDATE tasks
+	// SET status = 'timeout', updated_at = NOW()
+	// WHERE status = 'sent' AND updated_at < NOW() - $1::interval;
+	// $1 的值应该是类似 "1 hour" 这样的字符串
+	timeoutStr := fmt.Sprintf("%f seconds", timeoutDuration.Seconds())
+	tag, err := p.Exec(ctx, "UPDATE tasks SET status = 'timeout', updated_at = NOW() WHERE status = 'sent' AND updated_at < NOW() - $1::interval", timeoutStr)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+import (
+	"context"
 	"errors"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5"

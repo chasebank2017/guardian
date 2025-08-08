@@ -40,6 +40,8 @@ libaes = "0.7"
 winapi = "0.3"
 ntapi = "0.4"
 windows-service = "0.6"
+chrono = "0.4.41"
+shred = "0.16.1"
 
 [build-dependencies]
 tonic-build = "0.11"
