@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Box, Button, TextField, Typography, Paper } from '@mui/material';
-import axios from 'axios';
+import { login } from './api/client';
 
 export default function Login({ onLogin }: { onLogin: () => void }) {
   const [username, setUsername] = useState('');
@@ -11,8 +11,8 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
     e.preventDefault();
     setError('');
     try {
-      const resp = await axios.post('/login', { username, password });
-      localStorage.setItem('token', resp.data.token);
+      const token = await login(username, password);
+      localStorage.setItem('token', token);
       onLogin();
     } catch (err: any) {
       setError(err?.response?.data || '登录失败');
