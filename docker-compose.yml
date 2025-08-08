@@ -14,6 +14,11 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/db/init:/docker-entrypoint-initdb.d
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d guardian -h localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   backend:
     build:
@@ -28,6 +33,20 @@ services:
     environment:
       - DATABASE_URL=postgres://user:password@postgres:5432/guardian?sslmode=disable
     restart: unless-stopped
+
+  migrate:
+    image: migrate/migrate:4
+    container_name: guardian_migrate
+    volumes:
+      - ./backend/db/migrations:/migrations
+    command: [
+      "-path", "/migrations",
+      "-database", "postgres://user:password@postgres:5432/guardian?sslmode=disable",
+      "up"
+    ]
+    depends_on:
+      - postgres
+    restart: on-failure
 
 volumes:
   postgres_data:
