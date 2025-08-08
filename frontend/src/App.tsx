@@ -4,7 +4,7 @@ import { Toaster } from 'react-hot-toast';
 import VirtualizedMessageList from './components/VirtualizedMessageList';
 import { Box, List, ListItem, ListItemButton, ListItemText, Typography, Paper } from '@mui/material';
 import Login from './Login';
-import './api/axiosConfig';
+// 统一的 axios 实例与拦截器在 api/client 中
 import { useAppStore } from './store/appStore';
 
 function App() {

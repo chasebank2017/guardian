@@ -1,8 +1,17 @@
 server:
   port: ":8080"
   grpc_port: ":50051"
+  request_timeout_seconds: 15
+  cors_origins: ["*"]
+  rate_limit:
+    login_rps: 5
+    login_burst: 10
+    protected_rps: 50
+    protected_burst: 100
 database:
   dsn: "postgres://user:password@localhost:5432/guardian_db?sslmode=disable"
 
 auth:
   jwt_secret: "a-very-secret-key-that-should-be-long-and-random"
+  admin_username: "admin"
+  admin_password: "password"
