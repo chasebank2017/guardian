@@ -95,6 +95,54 @@ npm run build  # 生产构建
 
 ---
 
+## 数据库迁移（golang-migrate）
+
+使用 `golang-migrate/migrate` 管理数据库 Schema 变更。
+
+1) 安装 CLI（任选一种）
+
+- macOS（Homebrew）：
+
+```bash
+brew install migrate
+```
+
+- 直接下载二进制：参考官方发布页 `https://github.com/golang-migrate/migrate/releases`
+
+2) 目录结构
+
+- 迁移脚本位于：`backend/db/migrations`
+- 示例：
+  - `000001_create_audit_users.up.sql`
+  - `000001_create_audit_users.down.sql`
+  - `000002_create_cases_and_case_agents.up.sql`
+  - `000002_create_cases_and_case_agents.down.sql`
+
+3) 运行迁移
+
+本地连接串示例（与 docker-compose 默认一致）：
+
+```bash
+export DATABASE_URL="postgres://user:password@localhost:5432/guardian?sslmode=disable"
+migrate -database "$DATABASE_URL" -path backend/db/migrations up
+```
+
+回滚最近一个版本：
+
+```bash
+migrate -database "$DATABASE_URL" -path backend/db/migrations down 1
+```
+
+查看当前版本：
+
+```bash
+migrate -database "$DATABASE_URL" -path backend/db/migrations version
+```
+
+4) 在 CI/CD 中使用（可选）
+
+在部署步骤中执行 `up` 以确保数据库 schema 已就绪。
+
 ## API 速览（HTTP）
 
 - 登录获取 JWT

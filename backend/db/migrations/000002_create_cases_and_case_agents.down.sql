@@ -1,0 +1,4 @@
+DROP TABLE IF EXISTS case_agents;
+DROP TABLE IF EXISTS cases;
+
+
